@@ -9,34 +9,43 @@ on:
       timestamps:
         required: false
         default: ''
-      judul:
+      videoTitle:
+        description: "Judul Video"
         required: false
         default: ''
-      deskripsi:
+      videoDescription:
+        description: "Deskripsi Video"
         required: false
         default: ''
-      tag:
+      tags:
         required: false
         default: ''
-      channel:
+      channelName:
+        description: "Nama Target Channel"
         required: false
         default: ''
-      lokasi:
+      location:
         required: false
         default: ''
-      penggunaan_ai:
+      aiContent:
         required: false
         default: ''
-      pembatasan_usia:
+      ageRestriction:
         required: false
         default: ''
-      pilih_audiens:
+      audience:
         required: false
         default: ''
-      tanggal_bulan_tahun:
+      publishDate:
+        description: "Tanggal Rilis (DD-MM-YYYY)"
         required: false
         default: ''
-      jam_tayang:
+      videoTime:
+        description: "Jam Tayang (HH:MM)"
+        required: false
+        default: ''
+      thumbnailId:
+        description: "ID Thumbnail Drive"
         required: false
         default: ''
 
@@ -50,16 +59,18 @@ jobs:
 
       - name: Debug Inputs
         run: |
-          echo "VIDEO_URL=${{ github.event.inputs.video_url }}"
-          echo "TIMESTAMPS=${{ github.event.inputs.timestamps }}"
-          echo "CHANNEL=${{ github.event.inputs.channel }}"
+          echo "VIDEO_URL = '${{ github.event.inputs.video_url }}'"
+          echo "TIMESTAMPS = '${{ github.event.inputs.timestamps }}'"
+          echo "channelName = '${{ github.event.inputs.channelName }}'"
+          echo "publishDate = '${{ github.event.inputs.publishDate }}'"
+          echo "videoTime = '${{ github.event.inputs.videoTime }}'"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # Install FFmpeg langsung tanpa apt-get update (Cepat)
+      # Install FFmpeg langsung (Cepat)
       - name: Install FFmpeg & Python Dependencies
         run: |
           sudo apt-get install -y --no-install-recommends ffmpeg
@@ -88,7 +99,6 @@ jobs:
 
           print("Download target Google Drive:", video_url)
 
-          # Extract Drive ID dari Link Folder / File
           drive_id_match = re.search(r'([a-zA-Z0-9_-]{25,})', video_url)
           drive_id = drive_id_match.group(1) if drive_id_match else None
 
@@ -106,7 +116,6 @@ jobs:
           print("Executing:", download_cmd)
           exit_code = os.system(download_cmd)
 
-          # Ambil file mp4 hasil download jika link folder
           if "folders" in video_url:
               mp4_files = glob.glob("/tmp/gdrive_folder/*.mp4") + glob.glob("/tmp/gdrive_folder/**/*.mp4", recursive=True)
               if mp4_files:
@@ -122,7 +131,7 @@ jobs:
           print("✅ Download dari Google Drive Berhasil!")
           source = "video_mentah.mp4"
 
-          # PROSES POTONG VIDEO DENGAN FFMPEG
+          # PROSES POTONG & SAMBUNG VIDEO
           if timestamps_raw:
               print("Memotong video dengan timestamps:", timestamps_raw)
               parts = timestamps_raw.split(",")
@@ -167,7 +176,7 @@ jobs:
         if: steps.process_video.outputs.skip_upload != 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Node Dependencies
         if: steps.process_video.outputs.skip_upload != 'true'
@@ -177,20 +186,20 @@ jobs:
       - name: Upload to YouTube via Node.js
         if: steps.process_video.outputs.skip_upload != 'true'
         env:
-          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', github.event.inputs.channel)] }}
-          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', github.event.inputs.channel)] }}
-          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', github.event.inputs.channel)] }}
+          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', github.event.inputs.channelName)] }}
+          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', github.event.inputs.channelName)] }}
+          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', github.event.inputs.channelName)] }}
 
-          VIDEO_TITLE: ${{ github.event.inputs.judul }}
-          VIDEO_DESCRIPTION: ${{ github.event.inputs.deskripsi }}
-          PUBLISH_DATE: ${{ github.event.inputs.tanggal_bulan_tahun }}
-          VIDEO_TIME: ${{ github.event.inputs.jam_tayang }}
-          LOCATION: ${{ github.event.inputs.lokasi }}
-          TAGS: ${{ github.event.inputs.tag }}
-          AI_CONTENT: ${{ github.event.inputs.penggunaan_ai }}
-          AUDIENCE: ${{ github.event.inputs.pilih_audiens }}
-          AGE_RESTRICTION: ${{ github.event.inputs.pembatasan_usia }}
-          THUMBNAIL_ID: ""
+          VIDEO_TITLE: ${{ github.event.inputs.videoTitle }}
+          VIDEO_DESCRIPTION: ${{ github.event.inputs.videoDescription }}
+          PUBLISH_DATE: ${{ github.event.inputs.publishDate }}
+          VIDEO_TIME: ${{ github.event.inputs.videoTime }}
+          THUMBNAIL_ID: ${{ github.event.inputs.thumbnailId }}
+          LOCATION: ${{ github.event.inputs.location || '' }}
+          TAGS: ${{ github.event.inputs.tags || '' }}
+          AI_CONTENT: ${{ github.event.inputs.aiContent || '' }}
+          AUDIENCE: ${{ github.event.inputs.audience || '' }}
+          AGE_RESTRICTION: ${{ github.event.inputs.ageRestriction || '' }}
 
         run: |
           node upload.js
