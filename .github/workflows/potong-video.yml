@@ -59,17 +59,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Setup Deno sebagai JS Runtime resmi yt-dlp untuk memecahkan n-sig challenge
-      - name: Install Deno
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
-
       - name: Install FFmpeg, yt-dlp & requests
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          pip install -U yt-dlp requests yt-dlp-ejs
+          pip install -U yt-dlp requests
 
       - name: Create cookies.txt
         run: |
@@ -87,7 +81,7 @@ jobs:
           import os
           import sys
           import glob
-          import json
+          import re
           import requests
 
           video_url = os.environ.get("VIDEO_URL", "").strip()
@@ -102,60 +96,61 @@ jobs:
           print("Download target:", video_url)
           download_success = False
 
-          # METODE 1: yt-dlp dengan JS Runtime Deno & Client TV/Web
-          cookie_flag = "--cookies cookies.txt" if os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 10 else ""
-          
-          cmd_ytdlp = (
-              f'yt-dlp '
-              f'{cookie_flag} '
-              f'--js-runtimes deno '
-              f'--extractor-args "youtube:player_client=tv,web" '
-              f'--recode-video mp4 '
-              f'"{video_url}" '
-              f'-o "video_mentah.%(ext)s"'
-          )
-          
-          print("Mengunduh via yt-dlp...")
-          if os.system(cmd_ytdlp) == 0:
-              download_success = True
+          # Ambil Video ID dari URL Shorts / Regular
+          video_id_match = re.search(r'(?:v=|\/shorts\/|\/embed\/|\/watch\?v=)([a-zA-Z0-9_-]{11})', video_url)
+          video_id = video_id_match.group(1) if video_id_match else None
 
-          # METODE 2: Fallback API Publik (Cobalt Free Instances)
-          if not download_success:
-              print("⚠️ yt-dlp gagal. Mengalihkan ke Public API Downloader...")
-              instances = [
-                  "https://co.wuk.sh/api/json",
-                  "https://cobalt-api.kwi.li/",
-                  "https://api.cobalt.host/"
+          # METODE 1: Invidious API (Frontend YouTube Alternatif - Paling Stabil)
+          if video_id:
+              print(f"Mengambil video via Invidious API untuk ID: {video_id}...")
+              invidious_instances = [
+                  "https://inv.tux.workers.dev",
+                  "https://invidious.nerdvpn.de",
+                  "https://invidious.drgns.space",
+                  "https://yt.artemislena.eu"
               ]
               
-              headers = {
-                  "Accept": "application/json",
-                  "Content-Type": "application/json"
-              }
-              payload = {
-                  "url": video_url,
-                  "videoQuality": "max"
-              }
-
-              for api_url in instances:
+              for instance in invidious_instances:
                   try:
-                      print(f"Mencoba API: {api_url}")
-                      response = requests.post(api_url, headers=headers, json=payload, timeout=20)
-                      res_data = response.json()
-
-                      direct_url = res_data.get("url")
-                      if direct_url:
-                          print("Dapat URL download langsung. Mengunduh video...")
-                          r = requests.get(direct_url, stream=True, timeout=60)
-                          with open("video_mentah.mp4", "wb") as f:
-                              for chunk in r.iter_content(chunk_size=1024*1024):
-                                  if chunk:
-                                      f.write(chunk)
-                          download_success = True
-                          print("Download via API Sukses!")
-                          break
+                      api_url = f"{instance}/api/v1/videos/{video_id}"
+                      print(f"Mencoba Invidious: {api_url}")
+                      res = requests.get(api_url, timeout=10)
+                      if res.status_code == 200:
+                          data = res.json()
+                          # Cari format video + audio gabungan atau kualitas terbaik
+                          format_streams = data.get("formatStreams", [])
+                          target_url = None
+                          if format_streams:
+                              # Pilih format video mp4 terbaik
+                              target_url = format_streams[-1].get("url")
+                          
+                          if target_url:
+                              print("Dapat URL Direct dari Invidious. Mengunduh...")
+                              r = requests.get(target_url, stream=True, timeout=60)
+                              with open("video_mentah.mp4", "wb") as f:
+                                  for chunk in r.iter_content(chunk_size=1024*1024):
+                                      if chunk:
+                                          f.write(chunk)
+                              download_success = True
+                              print("Download via Invidious Sukses!")
+                              break
                   except Exception as e:
-                      print(f"Gagal via {api_url}: {str(e)}")
+                      print(f"Gagal Invidious ({instance}):", str(e))
+
+          # METODE 2: Fallback ke yt-dlp jika Invidious tidak merespons
+          if not download_success:
+              print("⚠️ Invidious gagal. Mencoba yt-dlp...")
+              cookie_flag = "--cookies cookies.txt" if os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 10 else ""
+              cmd_ytdlp = (
+                  f'yt-dlp '
+                  f'{cookie_flag} '
+                  f'--extractor-args "youtube:player_client=ios,android" '
+                  f'--recode-video mp4 '
+                  f'"{video_url}" '
+                  f'-o "video_mentah.%(ext)s"'
+              )
+              if os.system(cmd_ytdlp) == 0:
+                  download_success = True
 
           files = glob.glob("video_mentah.*")
           if not download_success or not files:
