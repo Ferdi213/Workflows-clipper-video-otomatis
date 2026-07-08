@@ -186,9 +186,10 @@ jobs:
       - name: Upload to YouTube via Node.js
         if: steps.process_video.outputs.skip_upload != 'true'
         env:
-          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', github.event.inputs.channelName)] }}
-          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', github.event.inputs.channelName)] }}
-          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', github.event.inputs.channelName)] }}
+          # toUpperCase memaksa nama channel dikonversi ke HURUF BESAR SEMUA (misal: CHANNEL1, CHANNEL2)
+          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', toUpperCase(github.event.inputs.channelName))] }}
+          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', toUpperCase(github.event.inputs.channelName))] }}
+          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', toUpperCase(github.event.inputs.channelName))] }}
 
           VIDEO_TITLE: ${{ github.event.inputs.videoTitle }}
           VIDEO_DESCRIPTION: ${{ github.event.inputs.videoDescription }}
