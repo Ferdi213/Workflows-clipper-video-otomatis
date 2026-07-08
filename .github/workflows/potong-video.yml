@@ -1,0 +1,41 @@
+name: Process and Cut Video
+
+on:
+  repository_dispatch:
+    types: [process_video_event] # Pemicu dari n8n
+
+jobs:
+  build-and-process:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Ambil kode dari repository Anda
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Python & Install Tools Pemotong (FFmpeg + yt-dlp + MoviePy)
+      - name: Set up Python & Install Dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install FFmpeg & Python Libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install yt-dlp moviepy google-api-python-client google-auth-oauthlib
+
+      # 3. Jalankan Script Python Potong & Gabung Video
+      - name: Run Video Processing Script
+        env:
+          VIDEO_URL: ${{ github.event.client_payload.video_url }}
+          TIMESTAMPS: ${{ github.event.client_payload.timestamps }}
+        run: |
+          python process_video.py
+
+      # 4. Upload langsung ke YouTube
+      - name: Upload to YouTube
+        env:
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+        run: |
+          python upload_to_youtube.py
