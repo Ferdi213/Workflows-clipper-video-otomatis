@@ -59,7 +59,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      # TANPA apt-get update & apt-get install ffmpeg (FFmpeg sudah ada di runner Ubuntu)
       - name: Install Python Dependencies
         run: |
           pip install -U gdown requests
@@ -97,11 +96,13 @@ jobs:
 
           print(f"Mencoba download dari Google Drive (ID: {drive_id})...")
           
-          # Jika link berupa Folder atau File, gdown akan otomatis menanganinya
-          download_cmd = f'gdown --id "{drive_id}" -O video_mentah.mp4 --fuzzy'
+          # Sintaks gdown terbaru
           if "folders" in video_url:
-              download_cmd = f'gdown --folder "{video_url}" -O /tmp/gdrive_folder --remaining-ok'
+              download_cmd = f'gdown --folder "https://drive.google.com/drive/folders/{drive_id}" -O /tmp/gdrive_folder --remaining-ok'
+          else:
+              download_cmd = f'gdown "https://drive.google.com/uc?id={drive_id}" -O video_mentah.mp4'
 
+          print("Executing:", download_cmd)
           exit_code = os.system(download_cmd)
 
           # Ambil file mp4 hasil download jika link folder
