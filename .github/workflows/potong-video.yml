@@ -1,8 +1,44 @@
 name: Process and Cut Video
 
 on:
-  repository_dispatch:
-    types: [potong_video_event] # Dipicu langsung dari payload JSON n8n
+  workflow_dispatch:
+    inputs:
+      video_url:
+        required: false
+        default: ''
+      timestamps:
+        required: false
+        default: ''
+      judul:
+        required: false
+        default: ''
+      deskripsi:
+        required: false
+        default: ''
+      tag:
+        required: false
+        default: ''
+      channel:
+        required: false
+        default: ''
+      lokasi:
+        required: false
+        default: ''
+      penggunaan_ai:
+        required: false
+        default: ''
+      pembatasan_usia:
+        required: false
+        default: ''
+      pilih_audiens:
+        required: false
+        default: ''
+      tanggal_bulan_tahun:
+        required: false
+        default: ''
+      jam_tayang:
+        required: false
+        default: ''
 
 jobs:
   build-and-process:
@@ -13,7 +49,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Setup Python & Install yt-dlp + FFmpeg (Untuk download & potong kilat)
+      # 2. Setup Python & Install yt-dlp + FFmpeg
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -25,11 +61,11 @@ jobs:
           sudo apt-get install -y ffmpeg
           pip install yt-dlp
 
-      # 3. Download dan Potong Video (Output langsung dinamai video.mp4 agar dibaca Node.js)
+      # 3. Download dan Potong Video (Membaca inputs.video_url & inputs.timestamps)
       - name: Run Video Processing Script
         env:
-          VIDEO_URL: ${{ github.event.client_payload.video_url }}
-          TIMESTAMPS: ${{ github.event.client_payload.timestamps }}
+          VIDEO_URL: ${{ github.event.inputs.video_url }}
+          TIMESTAMPS: ${{ github.event.inputs.timestamps }}
         run: |
           python -c '
           import os, sys
@@ -61,7 +97,7 @@ jobs:
           print("Proses potong & gabung video selesai lokal.")
           '
 
-      # 4. Setup Lingkungan Node.js untuk Modul Upload Anda
+      # 4. Setup Lingkungan Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -74,19 +110,19 @@ jobs:
       # 5. Upload Video Terpotong Langsung ke Channel YouTube Terpilih
       - name: Upload to YouTube via Node.js
         env:
-          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', github.event.client_payload.channel)] }}
-          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', github.event.client_payload.channel)] }}
-          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', github.event.client_payload.channel)] }}
+          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', github.event.inputs.channel)] }}
+          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', github.event.inputs.channel)] }}
+          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', github.event.inputs.channel)] }}
           
-          VIDEO_TITLE: ${{ github.event.client_payload.judul }}
-          VIDEO_DESCRIPTION: ${{ github.event.client_payload.deskripsi }}
-          PUBLISH_DATE: ${{ github.event.client_payload.tanggal_bulan_tahun }}
-          VIDEO_TIME: ${{ github.event.client_payload.jam_tayang }}
-          LOCATION: ${{ github.event.client_payload.lokasi }}
-          TAGS: ${{ github.event.client_payload.tag }}
-          AI_CONTENT: ${{ github.event.client_payload.penggunaan_ai }}
-          AUDIENCE: ${{ github.event.client_payload.pilih_audiens }}
-          AGE_RESTRICTION: ${{ github.event.client_payload.pembatasan_usia }}
-          THUMBNAIL_ID: "" # Kosongkan secara default untuk mode Shorts otomatis
+          VIDEO_TITLE: ${{ github.event.inputs.judul }}
+          VIDEO_DESCRIPTION: ${{ github.event.inputs.deskripsi }}
+          PUBLISH_DATE: ${{ github.event.inputs.tanggal_bulan_tahun }}
+          VIDEO_TIME: ${{ github.event.inputs.jam_tayang }}
+          LOCATION: ${{ github.event.inputs.lokasi }}
+          TAGS: ${{ github.event.inputs.tag }}
+          AI_CONTENT: ${{ github.event.inputs.penggunaan_ai }}
+          AUDIENCE: ${{ github.event.inputs.pilih_audiens }}
+          AGE_RESTRICTION: ${{ github.event.inputs.pembatasan_usia }}
+          THUMBNAIL_ID: ""
         run: |
           node upload.js
