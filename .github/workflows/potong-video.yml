@@ -89,11 +89,7 @@ jobs:
           print("Download:", video_url)
 
           result = os.system(
-              f"yt-dlp "
-              f"--cookies cookies.txt "
-              f"-f \"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]\" "
-              f"\"{video_url}\" "
-              f"-o video_mentah.mp4"
+              f"yt-dlp --cookies cookies.txt -f \"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]\" \"{video_url}\" -o video_mentah.mp4"
           )
 
           if result != 0:
@@ -107,34 +103,23 @@ jobs:
           if timestamps_raw:
               print("Cut:", timestamps_raw)
 
+              parts = timestamps_raw.split(",")
               filter_complex = ""
               concat_inputs = ""
 
-              parts = timestamps_raw.split(",")
-
               for i, item in enumerate(parts):
                   start, end = item.strip().split("-")
-                  filter_complex += (
-                      f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}];"
-                      f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}];"
-                  )
+                  filter_complex += f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}];"
+                  filter_complex += f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}];"
                   concat_inputs += f"[v{i}][a{i}]"
 
-              filter_complex += (
-                  f"{concat_inputs}concat=n={len(parts)}:v=1:a=1[outv][outa]"
-              )
+              filter_complex += f"{concat_inputs}concat=n={len(parts)}:v=1:a=1[outv][outa]"
 
-              cmd = (
-                  f'ffmpeg -y -i video_mentah.mp4 '
-                  f'-filter_complex "{filter_complex}" '
-                  f'-map "[outv]" '
-                  f'-map "[outa]" '
-                  f'-c:v libx264 '
-                  f'-c:a aac '
-                  f'video.mp4'
-              )
+              ffmpeg_cmd = f"ffmpeg -y -i video_mentah.mp4 -filter_complex \"{filter_complex}\" -map \"[outv]\" -map \"[outa]\" -c:v libx264 -c:a aac video.mp4"
 
-              if os.system(cmd) != 0:
+              print("Running command:", ffmpeg_cmd)
+
+              if os.system(ffmpeg_cmd) != 0:
                   print("FFmpeg gagal.")
                   sys.exit(1)
           else:
