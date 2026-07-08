@@ -59,7 +59,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Setup Node.js (digunakan juga sebagai JS Runtime oleh yt-dlp)
+      # Install Deno JS Engine untuk memecahkan YouTube n-challenge
+      - name: Install Deno (yt-dlp JS Runtime)
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -98,17 +104,14 @@ jobs:
 
           print("Download:", video_url)
 
-          # Periksa apakah cookies.txt ada ukurannya
           cookie_flag = "--cookies cookies.txt" if os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 10 else ""
 
-          # Command yt-dlp dengan JS runtime Node + player client Android/Web
+          # Menggunakan Deno + Client mweb/ios untuk bypass pembatasan YouTube
           cmd = (
               f'yt-dlp '
               f'{cookie_flag} '
-              f'--js-runtimes node '
-              f'--extractor-args "youtube:player_client=android,web" '
-              f'--merge-output-format mp4 '
-              f'-f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" '
+              f'--extractor-args "youtube:player_client=mweb,ios,web" '
+              f'--recode-video mp4 '
               f'"{video_url}" '
               f'-o "video_mentah.%(ext)s"'
           )
@@ -116,15 +119,13 @@ jobs:
           print("Running Command:", cmd)
 
           if os.system(cmd) != 0:
-              print("Attempt 1 gagal, mencoba fallback tanpa format restriction...")
+              print("Attempt 1 gagal, mencoba fallback tanpa cookies...")
               fallback_cmd = (
                   f'yt-dlp '
-                  f'{cookie_flag} '
-                  f'--js-runtimes node '
-                  f'--extractor-args "youtube:player_client=android,web" '
+                  f'--extractor-args "youtube:player_client=mweb,ios" '
                   f'--recode-video mp4 '
                   f'"{video_url}" '
-                  f'-o "video_mentah.mp4"'
+                  f'-o "video_mentah.%(ext)s"'
               )
               if os.system(fallback_cmd) != 0:
                   print("yt-dlp gagal sepenuhnya.")
