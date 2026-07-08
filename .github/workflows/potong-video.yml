@@ -1,4 +1,4 @@
-name: Process and Cut Video
+Name: Process and Cut Video
 
 on:
   repository_dispatch:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Setup Python & Install Tools Pemotong (FFmpeg + yt-dlp + MoviePy)
+      # 2. Setup Python & Install Tools (FFmpeg + yt-dlp + MoviePy + YouTube API)
       - name: Set up Python & Install Dependencies
         uses: actions/setup-python@v5
         with:
@@ -23,19 +23,35 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          pip install yt-dlp moviepy google-api-python-client google-auth-oauthlib
+          pip install yt-dlp moviepy google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       # 3. Jalankan Script Python Potong & Gabung Video
       - name: Run Video Processing Script
         env:
           VIDEO_URL: ${{ github.event.client_payload.video_url }}
           TIMESTAMPS: ${{ github.event.client_payload.timestamps }}
+          JUDUL: ${{ github.event.client_payload.judul }}
+          DESKRIPSI: ${{ github.event.client_payload.deskripsi }}
+          TAG: ${{ github.event.client_payload.tag }}
+          CHANNEL: ${{ github.event.client_payload.channel }}
+          LOKASI: ${{ github.event.client_payload.lokasi }}
+          PENGGUNAAN_AI: ${{ github.event.client_payload.penggunaan_ai }}
+          PEMBATASAN_USIA: ${{ github.event.client_payload.pembatasan_usia }}
+          PILIH_AUDIENS: ${{ github.event.client_payload.pilih_audiens }}
         run: |
           python process_video.py
 
-      # 4. Upload langsung ke YouTube
-      #- name: Upload to YouTube
-     #   env:
-        #  YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-     #   run: |
-          #python upload_to_youtube.py
+      # 4. Upload Langsung ke YouTube (Full & Aktif)
+      - name: Upload to YouTube
+        env:
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          JUDUL: ${{ github.event.client_payload.judul }}
+          DESKRIPSI: ${{ github.event.client_payload.deskripsi }}
+          TAG: ${{ github.event.client_payload.tag }}
+          CHANNEL: ${{ github.event.client_payload.channel }}
+          PEMBATASAN_USIA: ${{ github.event.client_payload.pembatasan_usia }}
+          PILIH_AUDIENS: ${{ github.event.client_payload.pilih_audiens }}
+          AI_CONTENT: ${{ github.event.client_payload.penggunaan_ai }}
+        run: |
+          python upload_to_youtube.py
