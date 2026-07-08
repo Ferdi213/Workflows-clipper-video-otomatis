@@ -1,0 +1,50 @@
+name: Download from HF and Send to Telegram
+
+on:
+  workflow_dispatch:
+    inputs:
+      jobId:
+        description: "ID Job dari Hugging Face"
+        required: true
+      videoTitle:
+        description: "Judul Video (Akan jadi teks caption di Telegram)"
+        required: false
+
+jobs:
+  process-video:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Video from Hugging Face
+        run: |
+          echo "Download Job: ${{ github.event.inputs.jobId }}"
+
+          curl -L \
+            -o video.mp4 \
+            "https://ferdyankuya-ytshortsku-long-sendvideo.hf.space/api/download-result/${{ github.event.inputs.jobId }}"
+
+          if [ ! -s video.mp4 ]; then
+            echo "Video kosong atau gagal didownload"
+            exit 1
+          fi
+
+          echo "Ukuran file berhasil didownload:"
+          du -sh video.mp4
+
+      - name: Send Video to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          VIDEO_TITLE: ${{ github.event.inputs.videoTitle }}
+        run: |
+          echo "Memulai pengiriman video ke Telegram..."
+          
+          # Perbaikan struktur pemanggilan URL API Telegram menggunakan variabel env yang aman
+          curl -v -F "video=@video.mp4" \
+            -F "chat_id=$TELEGRAM_CHAT_ID" \
+            -F "caption=🚀 Video Baru Selesai Dirender!%0A%0A📌 *Judul:* $VIDEO_TITLE" \
+            -F "parse_mode=Markdown" \
+            "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendVideo"
