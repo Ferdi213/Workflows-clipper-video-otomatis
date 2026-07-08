@@ -59,22 +59,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Install Deno JS Engine untuk memecahkan YouTube n-challenge
-      - name: Install Deno (yt-dlp JS Runtime)
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: v1.x
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install FFmpeg & yt-dlp
+      - name: Install FFmpeg, yt-dlp & requests
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          pip install -U yt-dlp
+          pip install -U yt-dlp requests
 
       - name: Create cookies.txt
         run: |
@@ -92,6 +81,8 @@ jobs:
           import os
           import sys
           import glob
+          import json
+          import requests
 
           video_url = os.environ.get("VIDEO_URL", "").strip()
           timestamps_raw = os.environ.get("TIMESTAMPS", "").strip()
@@ -102,45 +93,67 @@ jobs:
                   f.write("skip_upload=true\n")
               sys.exit(0)
 
-          print("Download:", video_url)
+          print("Download target:", video_url)
 
+          download_success = False
+
+          # METODE 1: Cobalah yt-dlp dengan client android_vr / web_embedded
           cookie_flag = "--cookies cookies.txt" if os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 10 else ""
-
-          # Menggunakan Deno + Client mweb/ios untuk bypass pembatasan YouTube
-          cmd = (
+          
+          cmd_ytdlp = (
               f'yt-dlp '
               f'{cookie_flag} '
-              f'--extractor-args "youtube:player_client=mweb,ios,web" '
+              f'--extractor-args "youtube:player_client=android_vr,web_embedded" '
               f'--recode-video mp4 '
               f'"{video_url}" '
               f'-o "video_mentah.%(ext)s"'
           )
+          
+          print("Mengunduh via yt-dlp...")
+          if os.system(cmd_ytdlp) == 0:
+              download_success = True
 
-          print("Running Command:", cmd)
+          # METODE 2: Fallback ke Cobalt API jika yt-dlp diblokir YouTube
+          if not download_success:
+              print("⚠️ yt-dlp terkena blokir bot YouTube. Mengalihkan ke Cobalt API Service...")
+              try:
+                  headers = {
+                      "Accept": "application/json",
+                      "Content-Type": "application/json"
+                  }
+                  payload = {
+                      "url": video_url,
+                      "videoQuality": "max"
+                  }
+                  response = requests.post("https://api.cobalt.tools/", headers=headers, json=payload, timeout=30)
+                  res_data = response.json()
 
-          if os.system(cmd) != 0:
-              print("Attempt 1 gagal, mencoba fallback tanpa cookies...")
-              fallback_cmd = (
-                  f'yt-dlp '
-                  f'--extractor-args "youtube:player_client=mweb,ios" '
-                  f'--recode-video mp4 '
-                  f'"{video_url}" '
-                  f'-o "video_mentah.%(ext)s"'
-              )
-              if os.system(fallback_cmd) != 0:
-                  print("yt-dlp gagal sepenuhnya.")
-                  sys.exit(1)
+                  direct_url = res_data.get("url")
+                  if direct_url:
+                      print("Dapat URL langsung dari Cobalt API. Mengunduh file video...")
+                      r = requests.get(direct_url, stream=True)
+                      with open("video_mentah.mp4", "wb") as f:
+                          for chunk in r.iter_content(chunk_size=1024*1024):
+                              if chunk:
+                                  f.write(chunk)
+                      download_success = True
+                      print("Download via Cobalt API Sukses!")
+                  else:
+                      print("Cobalt Response Error:", res_data)
+              except Exception as e:
+                  print("Gagal via Cobalt API:", str(e))
 
           files = glob.glob("video_mentah.*")
-
-          if not files:
-              print("Video tidak ditemukan.")
+          if not download_success or not files:
+              print("❌ Semua metode download gagal. Hentikan proses.")
               sys.exit(1)
 
           source = files[0]
-          print("Downloaded:", source)
+          print("Downloaded file:", source)
 
+          # PROSES POTONG VIDEO DENGAN FFMPEG
           if timestamps_raw:
+              print("Memotong video dengan timestamps:", timestamps_raw)
               parts = timestamps_raw.split(",")
               filter_complex = ""
               concat_inputs = ""
@@ -157,7 +170,7 @@ jobs:
                   f"{concat_inputs}concat=n={len(parts)}:v=1:a=1[outv][outa]"
               )
 
-              ffmpeg = (
+              ffmpeg_cmd = (
                   f'ffmpeg -y '
                   f'-i "{source}" '
                   f'-filter_complex "{filter_complex}" '
@@ -168,17 +181,22 @@ jobs:
                   f'video.mp4'
               )
 
-              print("FFmpeg Command:", ffmpeg)
-
-              if os.system(ffmpeg) != 0:
-                  print("FFmpeg gagal.")
+              print("Running FFmpeg...")
+              if os.system(ffmpeg_cmd) != 0:
+                  print("FFmpeg gagal memotong video.")
                   sys.exit(1)
 
           else:
               os.rename(source, "video.mp4")
 
-          print("Selesai dipotong.")
+          print("Proses download dan pemotongan selesai!")
           PYTHON
+
+      - name: Setup Node.js
+        if: steps.process_video.outputs.skip_upload != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Install Node Dependencies
         if: steps.process_video.outputs.skip_upload != 'true'
