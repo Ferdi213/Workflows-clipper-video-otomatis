@@ -58,25 +58,34 @@ async function upload() {
   console.log("Upload ke channel:", me.data.items[0].snippet.title);
 
   const title = clean(process.env.VIDEO_TITLE);
-  const description = clean(process.env.VIDEO_DESCRIPTION, "Uploaded by GitHub Actions");
+  const description = clean(process.env.VIDEO_DESCRIPTION, "Uploaded via GitHub Actions");
   const publishDate = clean(process.env.PUBLISH_DATE);
   const videoTime = clean(process.env.VIDEO_TIME);
   
   let publishAt = "";
   if (publishDate && videoTime) {
-    const [d, m, y] = publishDate.split("-");
-    publishAt = `${y}-${m}-${d}T${videoTime}:00+07:00`;
+    const parts = publishDate.split("-");
+    if (parts.length === 3) {
+      const [d, m, y] = parts;
+      publishAt = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T${videoTime}:00+07:00`;
+      console.log("Jadwal Publish (WIB):", publishAt);
+    }
   }
 
   const location = clean(process.env.LOCATION);
   const languageMap = { "Indonesia": "id", "USA": "en", "Japan": "ja" };
-  const language = languageMap[location] || "en";
+  const language = languageMap[location] || "id";
 
   const tagsRaw = clean(process.env.TAGS);
   const audience = clean(process.env.AUDIENCE);
 
   const tags = tagsRaw ? tagsRaw.split(",").map(tag => tag.trim()).filter(Boolean) : [];
   const geo = await getCoordinates(location);
+
+  // Pastikan file video.mp4 ada dari proses FFmpeg sebelumnya
+  if (!fs.existsSync("video.mp4")) {
+    throw new Error("File video.mp4 tidak ditemukan di direktori runner!");
+  }
 
   const response = await youtube.videos.insert({
     part: ["snippet", "status", "recordingDetails"],
@@ -106,7 +115,8 @@ async function upload() {
 
   const videoId = response.data.id;
   console.log("================================");
-  console.log("UPLOAD BERHASIL. Video ID:", videoId);
+  console.log("✅ UPLOAD BERHASIL!");
+  console.log("Video ID:", videoId);
   console.log(`URL: https://www.youtube.com/watch?v=${videoId}`);
   console.log("================================");
 
@@ -132,7 +142,7 @@ async function upload() {
 }
 
 upload().catch(err => {
-  console.error("UPLOAD GAGAL");
-  console.error(err?.response?.data || err);
+  console.error("❌ UPLOAD GAGAL");
+  console.error(err?.response?.data || err.message || err);
   process.exit(1);
 });
