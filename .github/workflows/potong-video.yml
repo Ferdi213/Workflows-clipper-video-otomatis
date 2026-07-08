@@ -59,7 +59,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Setup Node.js
+      - name: Setup Node.js (digunakan juga sebagai JS Runtime oleh yt-dlp)
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -98,23 +98,37 @@ jobs:
 
           print("Download:", video_url)
 
-          print("=== FORMAT TERSEDIA ===")
-          os.system(f'yt-dlp --cookies cookies.txt -F "{video_url}"')
+          # Periksa apakah cookies.txt ada ukurannya
+          cookie_flag = "--cookies cookies.txt" if os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 10 else ""
 
+          # Command yt-dlp dengan JS runtime Node + player client Android/Web
           cmd = (
               f'yt-dlp '
-              f'--cookies cookies.txt '
+              f'{cookie_flag} '
+              f'--js-runtimes node '
+              f'--extractor-args "youtube:player_client=android,web" '
               f'--merge-output-format mp4 '
-              f'-f "bv*+ba/b" '
+              f'-f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" '
               f'"{video_url}" '
               f'-o "video_mentah.%(ext)s"'
           )
 
-          print(cmd)
+          print("Running Command:", cmd)
 
           if os.system(cmd) != 0:
-              print("yt-dlp gagal.")
-              sys.exit(1)
+              print("Attempt 1 gagal, mencoba fallback tanpa format restriction...")
+              fallback_cmd = (
+                  f'yt-dlp '
+                  f'{cookie_flag} '
+                  f'--js-runtimes node '
+                  f'--extractor-args "youtube:player_client=android,web" '
+                  f'--recode-video mp4 '
+                  f'"{video_url}" '
+                  f'-o "video_mentah.mp4"'
+              )
+              if os.system(fallback_cmd) != 0:
+                  print("yt-dlp gagal sepenuhnya.")
+                  sys.exit(1)
 
           files = glob.glob("video_mentah.*")
 
@@ -126,9 +140,7 @@ jobs:
           print("Downloaded:", source)
 
           if timestamps_raw:
-
               parts = timestamps_raw.split(",")
-
               filter_complex = ""
               concat_inputs = ""
 
@@ -155,7 +167,7 @@ jobs:
                   f'video.mp4'
               )
 
-              print(ffmpeg)
+              print("FFmpeg Command:", ffmpeg)
 
               if os.system(ffmpeg) != 0:
                   print("FFmpeg gagal.")
@@ -164,7 +176,7 @@ jobs:
           else:
               os.rename(source, "video.mp4")
 
-          print("Selesai.")
+          print("Selesai dipotong.")
           PYTHON
 
       - name: Install Node Dependencies
