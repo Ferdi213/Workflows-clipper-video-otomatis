@@ -13,10 +13,10 @@ async function getCoordinates(place) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}&limit=1`;
     const response = await fetch(url, {
-      headers: { "User-Agent": "github-actions-youtube-uploader" }
+      headers: { "User-Agent": "github-actions-youtube-uploader/1.0" }
     });
     const data = await response.json();
-    if (!data.length) {
+    if (!data || !data.length) {
       console.log("Lokasi tidak ditemukan:", place);
       return null;
     }
@@ -26,7 +26,7 @@ async function getCoordinates(place) {
       description: data[0].display_name
     };
   } catch (err) {
-    console.log("Gagal mencari koordinat", err);
+    console.log("Gagal mencari koordinat:", err.message || err);
     return null;
   }
 }
@@ -51,6 +51,10 @@ async function upload() {
     mine: true
   });
 
+  if (!me.data.items || me.data.items.length === 0) {
+    throw new Error("Gagal mengambil data channel YouTube. Periksa Refresh Token Anda.");
+  }
+
   console.log("Upload ke channel:", me.data.items[0].snippet.title);
 
   const title = clean(process.env.VIDEO_TITLE);
@@ -70,7 +74,6 @@ async function upload() {
 
   const tagsRaw = clean(process.env.TAGS);
   const audience = clean(process.env.AUDIENCE);
-  const ageRestriction = clean(process.env.AGE_RESTRICTION);
 
   const tags = tagsRaw ? tagsRaw.split(",").map(tag => tag.trim()).filter(Boolean) : [];
   const geo = await getCoordinates(location);
@@ -107,12 +110,14 @@ async function upload() {
   console.log(`URL: https://www.youtube.com/watch?v=${videoId}`);
   console.log("================================");
 
-  // Bagian Pemrosesan Kustom Thumbnail (Diabaikan otomatis jika Shorts)
+  // Bagian Pemrosesan Kustom Thumbnail
   const thumbId = clean(process.env.THUMBNAIL_ID);
   if (thumbId) {
     try {
       const thumbPath = "thumbnail.jpg";
-      const thumbResponse = await fetch(`https://docs.google.com/uc?export=download&id=${thumbId}`);
+      const thumbResponse = await fetch(`https://docs.google.com/uc?export=download&id=${thumbId}`, {
+        redirect: "follow"
+      });
       const buffer = await thumbResponse.arrayBuffer();
       fs.writeFileSync(thumbPath, Buffer.from(buffer));
       await youtube.thumbnails.set({
