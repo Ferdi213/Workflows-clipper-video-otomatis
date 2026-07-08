@@ -1,8 +1,8 @@
-Name: Process and Cut Video
+name: Process and Cut Video
 
 on:
   repository_dispatch:
-    types: [potong_video_event] # Pemicu dari n8n
+    types: [potong_video_event] # Dipicu langsung dari payload JSON n8n
 
 jobs:
   build-and-process:
@@ -13,45 +13,80 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Setup Python & Install Tools (FFmpeg + yt-dlp + MoviePy + YouTube API)
-      - name: Set up Python & Install Dependencies
+      # 2. Setup Python & Install yt-dlp + FFmpeg (Untuk download & potong kilat)
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install FFmpeg & Python Libraries
+      - name: Install FFmpeg & yt-dlp
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          pip install yt-dlp moviepy google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install yt-dlp
 
-      # 3. Jalankan Script Python Potong & Gabung Video
+      # 3. Download dan Potong Video (Output langsung dinamai video.mp4 agar dibaca Node.js)
       - name: Run Video Processing Script
         env:
           VIDEO_URL: ${{ github.event.client_payload.video_url }}
           TIMESTAMPS: ${{ github.event.client_payload.timestamps }}
-          JUDUL: ${{ github.event.client_payload.judul }}
-          DESKRIPSI: ${{ github.event.client_payload.deskripsi }}
-          TAG: ${{ github.event.client_payload.tag }}
-          CHANNEL: ${{ github.event.client_payload.channel }}
-          LOKASI: ${{ github.event.client_payload.lokasi }}
-          PENGGUNAAN_AI: ${{ github.event.client_payload.penggunaan_ai }}
-          PEMBATASAN_USIA: ${{ github.event.client_payload.pembatasan_usia }}
-          PILIH_AUDIENS: ${{ github.event.client_payload.pilih_audiens }}
         run: |
-          python process_video.py
+          python -c '
+          import os, sys
+          video_url = os.getenv("VIDEO_URL")
+          timestamps_raw = os.getenv("TIMESTAMPS")
+          
+          if not video_url:
+              print("Error: URL Video kosong."); sys.exit(1)
+              
+          print(f"Mengunduh video via yt-dlp dari: {video_url}")
+          os.system(f"yt-dlp -f \"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]\" \"{video_url}\" -o video_mentah.mp4")
+          
+          if not os.path.exists("video_mentah.mp4"):
+              print("Gagal mengunduh video"); sys.exit(1)
+              
+          if timestamps_raw:
+              print(f"Memotong video ke segmen: {timestamps_raw}")
+              filter_complex = ""
+              concat_inputs = ""
+              for i, item in enumerate(timestamps_raw.split(",")):
+                  start, end = item.strip().split("-")
+                  filter_complex += f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]; [0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}]; "
+                  concat_inputs += f"[v{i}][a{i}]"
+              filter_complex += f"{concat_inputs}concat=n={i+1}:v=1:a=1[outv][outa]"
+              
+              os.system(f"ffmpeg -i video_mentah.mp4 -filter_complex \"{filter_complex}\" -map \"[outv]\" -map \"[outa]\" -c:v libx264 -c:a aac video.mp4")
+          else:
+              os.rename("video_mentah.mp4", "video.mp4")
+          print("Proses potong & gabung video selesai lokal.")
+          '
 
-      # 4. Upload Langsung ke YouTube (Full & Aktif)
-      - name: Upload to YouTube
-        env:
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          JUDUL: ${{ github.event.client_payload.judul }}
-          DESKRIPSI: ${{ github.event.client_payload.deskripsi }}
-          TAG: ${{ github.event.client_payload.tag }}
-          CHANNEL: ${{ github.event.client_payload.channel }}
-          PEMBATASAN_USIA: ${{ github.event.client_payload.pembatasan_usia }}
-          PILIH_AUDIENS: ${{ github.event.client_payload.pilih_audiens }}
-          AI_CONTENT: ${{ github.event.client_payload.penggunaan_ai }}
+      # 4. Setup Lingkungan Node.js untuk Modul Upload Anda
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Node Dependencies
         run: |
-          python upload_to_youtube.py
+          npm install googleapis
+
+      # 5. Upload Video Terpotong Langsung ke Channel YouTube Terpilih
+      - name: Upload to YouTube via Node.js
+        env:
+          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', github.event.client_payload.channel)] }}
+          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', github.event.client_payload.channel)] }}
+          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', github.event.client_payload.channel)] }}
+          
+          VIDEO_TITLE: ${{ github.event.client_payload.judul }}
+          VIDEO_DESCRIPTION: ${{ github.event.client_payload.deskripsi }}
+          PUBLISH_DATE: ${{ github.event.client_payload.tanggal_bulan_tahun }}
+          VIDEO_TIME: ${{ github.event.client_payload.jam_tayang }}
+          LOCATION: ${{ github.event.client_payload.lokasi }}
+          TAGS: ${{ github.event.client_payload.tag }}
+          AI_CONTENT: ${{ github.event.client_payload.penggunaan_ai }}
+          AUDIENCE: ${{ github.event.client_payload.pilih_audiens }}
+          AGE_RESTRICTION: ${{ github.event.client_payload.pembatasan_usia }}
+          THUMBNAIL_ID: "" # Kosongkan secara default untuk mode Shorts otomatis
+        run: |
+          node upload.js
