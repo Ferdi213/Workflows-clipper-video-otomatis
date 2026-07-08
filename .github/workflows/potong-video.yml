@@ -59,6 +59,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Install FFmpeg & yt-dlp
         run: |
           sudo apt-get update
@@ -72,72 +77,103 @@ jobs:
           EOF
 
       - name: Run Video Processing Script
+        id: process_video
         env:
           VIDEO_URL: ${{ github.event.inputs.video_url }}
           TIMESTAMPS: ${{ github.event.inputs.timestamps }}
         run: |
-          python -c '
-          import os, sys
+          python << 'PYTHON'
+          import os
+          import sys
+          import glob
 
-          video_url = os.getenv("VIDEO_URL")
-          timestamps_raw = os.getenv("TIMESTAMPS")
+          video_url = os.environ.get("VIDEO_URL", "").strip()
+          timestamps_raw = os.environ.get("TIMESTAMPS", "").strip()
 
           if not video_url:
-              print("Error: URL Video kosong.")
-              sys.exit(1)
+              print("⚠️ URL Video kosong. Melewati proses download & potong.")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("skip_upload=true\n")
+              sys.exit(0)
 
           print("Download:", video_url)
 
-          result = os.system(
-              f"yt-dlp --cookies cookies.txt -f \"bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]\" \"{video_url}\" -o video_mentah.mp4"
+          print("=== FORMAT TERSEDIA ===")
+          os.system(f'yt-dlp --cookies cookies.txt -F "{video_url}"')
+
+          cmd = (
+              f'yt-dlp '
+              f'--cookies cookies.txt '
+              f'--merge-output-format mp4 '
+              f'-f "bv*+ba/b" '
+              f'"{video_url}" '
+              f'-o "video_mentah.%(ext)s"'
           )
 
-          if result != 0:
+          print(cmd)
+
+          if os.system(cmd) != 0:
               print("yt-dlp gagal.")
               sys.exit(1)
 
-          if not os.path.exists("video_mentah.mp4"):
+          files = glob.glob("video_mentah.*")
+
+          if not files:
               print("Video tidak ditemukan.")
               sys.exit(1)
 
+          source = files[0]
+          print("Downloaded:", source)
+
           if timestamps_raw:
-              print("Cut:", timestamps_raw)
 
               parts = timestamps_raw.split(",")
+
               filter_complex = ""
               concat_inputs = ""
 
               for i, item in enumerate(parts):
                   start, end = item.strip().split("-")
-                  filter_complex += f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}];"
-                  filter_complex += f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}];"
+                  filter_complex += (
+                      f"[0:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}];"
+                      f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}];"
+                  )
                   concat_inputs += f"[v{i}][a{i}]"
 
-              filter_complex += f"{concat_inputs}concat=n={len(parts)}:v=1:a=1[outv][outa]"
+              filter_complex += (
+                  f"{concat_inputs}concat=n={len(parts)}:v=1:a=1[outv][outa]"
+              )
 
-              ffmpeg_cmd = f"ffmpeg -y -i video_mentah.mp4 -filter_complex \"{filter_complex}\" -map \"[outv]\" -map \"[outa]\" -c:v libx264 -c:a aac video.mp4"
+              ffmpeg = (
+                  f'ffmpeg -y '
+                  f'-i "{source}" '
+                  f'-filter_complex "{filter_complex}" '
+                  f'-map "[outv]" '
+                  f'-map "[outa]" '
+                  f'-c:v libx264 '
+                  f'-c:a aac '
+                  f'video.mp4'
+              )
 
-              print("Running command:", ffmpeg_cmd)
+              print(ffmpeg)
 
-              if os.system(ffmpeg_cmd) != 0:
+              if os.system(ffmpeg) != 0:
                   print("FFmpeg gagal.")
                   sys.exit(1)
+
           else:
-              os.rename("video_mentah.mp4", "video.mp4")
+              os.rename(source, "video.mp4")
 
           print("Selesai.")
-          '
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+          PYTHON
 
       - name: Install Node Dependencies
+        if: steps.process_video.outputs.skip_upload != 'true'
         run: |
           npm install googleapis
 
       - name: Upload to YouTube via Node.js
+        if: steps.process_video.outputs.skip_upload != 'true'
         env:
           CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', github.event.inputs.channel)] }}
           CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', github.event.inputs.channel)] }}
