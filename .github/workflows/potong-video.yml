@@ -59,11 +59,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Setup Deno sebagai JS Runtime resmi yt-dlp untuk memecahkan n-sig challenge
+      - name: Install Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
       - name: Install FFmpeg, yt-dlp & requests
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          pip install -U yt-dlp requests
+          pip install -U yt-dlp requests yt-dlp-ejs
 
       - name: Create cookies.txt
         run: |
@@ -94,16 +100,16 @@ jobs:
               sys.exit(0)
 
           print("Download target:", video_url)
-
           download_success = False
 
-          # METODE 1: Cobalah yt-dlp dengan client android_vr / web_embedded
+          # METODE 1: yt-dlp dengan JS Runtime Deno & Client TV/Web
           cookie_flag = "--cookies cookies.txt" if os.path.exists("cookies.txt") and os.path.getsize("cookies.txt") > 10 else ""
           
           cmd_ytdlp = (
               f'yt-dlp '
               f'{cookie_flag} '
-              f'--extractor-args "youtube:player_client=android_vr,web_embedded" '
+              f'--js-runtimes deno '
+              f'--extractor-args "youtube:player_client=tv,web" '
               f'--recode-video mp4 '
               f'"{video_url}" '
               f'-o "video_mentah.%(ext)s"'
@@ -113,35 +119,43 @@ jobs:
           if os.system(cmd_ytdlp) == 0:
               download_success = True
 
-          # METODE 2: Fallback ke Cobalt API jika yt-dlp diblokir YouTube
+          # METODE 2: Fallback API Publik (Cobalt Free Instances)
           if not download_success:
-              print("⚠️ yt-dlp terkena blokir bot YouTube. Mengalihkan ke Cobalt API Service...")
-              try:
-                  headers = {
-                      "Accept": "application/json",
-                      "Content-Type": "application/json"
-                  }
-                  payload = {
-                      "url": video_url,
-                      "videoQuality": "max"
-                  }
-                  response = requests.post("https://api.cobalt.tools/", headers=headers, json=payload, timeout=30)
-                  res_data = response.json()
+              print("⚠️ yt-dlp gagal. Mengalihkan ke Public API Downloader...")
+              instances = [
+                  "https://co.wuk.sh/api/json",
+                  "https://cobalt-api.kwi.li/",
+                  "https://api.cobalt.host/"
+              ]
+              
+              headers = {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json"
+              }
+              payload = {
+                  "url": video_url,
+                  "videoQuality": "max"
+              }
 
-                  direct_url = res_data.get("url")
-                  if direct_url:
-                      print("Dapat URL langsung dari Cobalt API. Mengunduh file video...")
-                      r = requests.get(direct_url, stream=True)
-                      with open("video_mentah.mp4", "wb") as f:
-                          for chunk in r.iter_content(chunk_size=1024*1024):
-                              if chunk:
-                                  f.write(chunk)
-                      download_success = True
-                      print("Download via Cobalt API Sukses!")
-                  else:
-                      print("Cobalt Response Error:", res_data)
-              except Exception as e:
-                  print("Gagal via Cobalt API:", str(e))
+              for api_url in instances:
+                  try:
+                      print(f"Mencoba API: {api_url}")
+                      response = requests.post(api_url, headers=headers, json=payload, timeout=20)
+                      res_data = response.json()
+
+                      direct_url = res_data.get("url")
+                      if direct_url:
+                          print("Dapat URL download langsung. Mengunduh video...")
+                          r = requests.get(direct_url, stream=True, timeout=60)
+                          with open("video_mentah.mp4", "wb") as f:
+                              for chunk in r.iter_content(chunk_size=1024*1024):
+                                  if chunk:
+                                      f.write(chunk)
+                          download_success = True
+                          print("Download via API Sukses!")
+                          break
+                  except Exception as e:
+                      print(f"Gagal via {api_url}: {str(e)}")
 
           files = glob.glob("video_mentah.*")
           if not download_success or not files:
