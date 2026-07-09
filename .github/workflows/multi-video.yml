@@ -1,4 +1,82 @@
-       - name: Run Video Processing Script from Google Drive
+name: Process and Cut Video from Google Drive
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        required: false
+        default: ''
+      timestamps:
+        required: false
+        default: ''
+      videoTitle:
+        description: "Judul Video"
+        required: false
+        default: ''
+      videoDescription:
+        description: "Deskripsi Video"
+        required: false
+        default: ''
+      tags:
+        required: false
+        default: ''
+      channelName:
+        description: "Nama Target Channel"
+        required: false
+        default: ''
+      location:
+        required: false
+        default: ''
+      aiContent:
+        required: false
+        default: ''
+      ageRestriction:
+        required: false
+        default: ''
+      audience:
+        required: false
+        default: ''
+      publishDate:
+        description: "Tanggal Rilis (DD-MM-YYYY)"
+        required: false
+        default: ''
+      videoTime:
+        description: "Jam Tayang (HH:MM)"
+        required: false
+        default: ''
+      thumbnailId:
+        description: "ID Thumbnail Drive"
+        required: false
+        default: ''
+
+jobs:
+  build-and-process:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Debug Inputs
+        run: |
+          echo "VIDEO_URL = '${{ github.event.inputs.video_url }}'"
+          echo "TIMESTAMPS = '${{ github.event.inputs.timestamps }}'"
+          echo "channelName = '${{ github.event.inputs.channelName }}'"
+          echo "publishDate = '${{ github.event.inputs.publishDate }}'"
+          echo "videoTime = '${{ github.event.inputs.videoTime }}'"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Install FFmpeg langsung (Cepat)
+      - name: Install FFmpeg & Python Dependencies
+        run: |
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          pip install -U gdown requests
+
+      - name: Run Video Processing Script from Google Drive
         id: process_video
         env:
           VIDEO_URL: ${{ github.event.inputs.video_url }}
@@ -19,8 +97,21 @@
                   f.write("skip_upload=true\n")
               sys.exit(0)
 
-          # Ambil SEMUA ID Google Drive dari teks VIDEO_URL (Multi-URL)
-          drive_ids = re.findall(r'([a-zA-Z0-9_-]{25,})', video_url)
+          # LOGIKA BARU: Ekstraksi ID Google Drive dari URL (Mendukung Koma & Enter/Newline)
+          urls = re.split(r'[\n,]+', video_url)
+          drive_ids = []
+
+          for url in urls:
+              url = url.strip()
+              if not url:
+                  continue
+
+              m = re.search(r'/d/([a-zA-Z0-9_-]+)', url)
+              if not m:
+                  m = re.search(r'id=([a-zA-Z0-9_-]+)', url)
+
+              if m:
+                  drive_ids.append(m.group(1))
 
           if not drive_ids:
               print("❌ Tidak ada ID Google Drive yang ditemukan dari URL!")
@@ -45,13 +136,19 @@
           if len(downloaded_files) == 1:
               os.rename(downloaded_files[0], "video_mentah.mp4")
           else:
-              # Jika ada banyak video, gabungkan dulu menjadi 1 video_mentah.mp4
+              # Jika ada banyak video, gabungkan dengan encoding ulang libx264
               print(f"Menggabungkan {len(downloaded_files)} video mentah...")
               with open("concat_list.txt", "w") as f:
                   for f_name in downloaded_files:
                       f.write(f"file '{f_name}'\n")
               
-              concat_cmd = 'ffmpeg -y -f concat -safe 0 -i concat_list.txt -c copy video_mentah.mp4'
+              # PERINTAH FFMPEG BARU (Mencegah Glitch Sync Audio/Video saat Penggabungan)
+              concat_cmd = (
+                  'ffmpeg -y -f concat -safe 0 -i concat_list.txt '
+                  '-c:v libx264 '
+                  '-c:a aac '
+                  'video_mentah.mp4'
+              )
               os.system(concat_cmd)
 
           source = "video_mentah.mp4"
@@ -96,3 +193,43 @@
 
           print("Proses download dan pemotongan multi-video selesai!")
           PYTHON
+
+      - name: Setup Node.js
+        if: steps.process_video.outputs.skip_upload != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Node Dependencies
+        if: steps.process_video.outputs.skip_upload != 'true'
+        run: |
+          npm install googleapis
+
+      - name: Format Channel Name to Uppercase
+        if: steps.process_video.outputs.skip_upload != 'true'
+        id: format_channel
+        run: |
+          RAW_CHANNEL="${{ github.event.inputs.channelName }}"
+          UPPER_CHANNEL=$(echo "$RAW_CHANNEL" | tr '[:lower:]' '[:upper:]')
+          echo "TARGET_CHANNEL=$UPPER_CHANNEL" >> $GITHUB_OUTPUT
+          echo "Channel diformat menjadi: $UPPER_CHANNEL"
+
+      # 🌟 PENAMBAHAN STEP KHUSUS: Mengirimkan File video.mp4 ke Telegram
+      - name: Send Video to Telegram
+        if: steps.process_video.outputs.skip_upload != 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          VIDEO_TITLE: ${{ github.event.inputs.videoTitle }}
+        run: |
+          echo "Memulai pengiriman video ke Telegram..."
+          
+          if [ -f "video.mp4" ]; then
+            curl -v -F "video=@video.mp4" \
+              -F "chat_id=$TELEGRAM_CHAT_ID" \
+              -F "caption=🚀 Video Baru Selesai Diproses!%0A%0A📌 *Judul:* $VIDEO_TITLE" \
+              -F "parse_mode=Markdown" \
+              "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendVideo"
+          else
+            echo "⚠️ File video.mp4 tidak ditemukan, pengiriman Telegram dilewati."
+          fi
