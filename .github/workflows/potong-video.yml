@@ -183,21 +183,12 @@ jobs:
         run: |
           npm install googleapis
 
-      - name: Format Channel Name to Uppercase
-        if: steps.process_video.outputs.skip_upload != 'true'
-        id: format_channel
-        run: |
-          RAW_CHANNEL="${{ github.event.inputs.channelName }}"
-          UPPER_CHANNEL=$(echo "$RAW_CHANNEL" | tr '[:lower:]' '[:upper:]')
-          echo "TARGET_CHANNEL=$UPPER_CHANNEL" >> $GITHUB_OUTPUT
-          echo "Channel diformat menjadi: $UPPER_CHANNEL"
-
       - name: Upload to YouTube via Node.js
         if: steps.process_video.outputs.skip_upload != 'true'
         env:
-          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', steps.format_channel.outputs.TARGET_CHANNEL)] }}
-          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', steps.format_channel.outputs.TARGET_CHANNEL)] }}
-          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', steps.format_channel.outputs.TARGET_CHANNEL)] }}
+          CLIENT_ID: ${{ secrets[format('YOUTUBE_CLIENT_ID_f044_{0}', github.event.inputs.channelName)] }}
+          CLIENT_SECRET: ${{ secrets[format('YOUTUBE_CLIENT_SECRET_f044_{0}', github.event.inputs.channelName)] }}
+          REFRESH_TOKEN: ${{ secrets[format('YOUTUBE_REFRESH_TOKEN_f044_{0}', github.event.inputs.channelName)] }}
 
           VIDEO_TITLE: ${{ github.event.inputs.videoTitle }}
           VIDEO_DESCRIPTION: ${{ github.event.inputs.videoDescription }}
