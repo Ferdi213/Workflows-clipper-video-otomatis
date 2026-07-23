@@ -99,8 +99,11 @@ jobs:
             fi
             
             # Normalisasi instan ke format mp4/aac
-            ffmpeg -y -i "$temp" -c:v libx264 -preset ultrafast -crf 26 -pix_fmt yuv420p -c:a aac -ar 44100 "$out" -loglevel error
-            rm "$temp"
+            ffmpeg -y -i "$temp" \
+              -c:v libx264 -preset ultrafast -crf 26 \
+              -r 30 -g 60 -keyint_min 60 -sc_threshold 0 \
+              -pix_fmt yuv420p -c:a aac -ar 44100 \
+              "$out" -loglevel error
           }
 
           IFS=',' read -ra VIDS <<< "${{ github.event.inputs.video_url }}"
@@ -113,8 +116,13 @@ jobs:
         run: |
           # 1. Gabung Video
           if ls downloads/vid_*.mp4 >/dev/null 2>&1; then
-            for f in $(ls downloads/vid_*.mp4 | sort -V); do echo "file '$f'" >> vid_list.txt; done
-            ffmpeg -y -f concat -safe 0 -i vid_list.txt -c copy video_mentah.mp4
+            # Urutkan file
+            files=($(ls downloads/vid_*.mp4 | sort -V))
+          cmd="MP4Box -new video_mentah.mp4"
+            for f in "${files[@]}"; do
+              cmd="$cmd -cat \"$f\""
+            done
+            eval $cmd
           fi
 
           # 2. Gabung Audio & Tempel ke Video
@@ -125,7 +133,7 @@ jobs:
           else
              mv video_mentah.mp4 video_final.mp4
           fi
-
+          
       - name: Cut Timestamps
         run: |
           if [ -n "${{ github.event.inputs.timestamps }}" ]; then
