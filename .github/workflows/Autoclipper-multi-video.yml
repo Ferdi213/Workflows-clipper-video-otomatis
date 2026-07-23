@@ -78,7 +78,7 @@ jobs:
       - name: Install Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg megatools
+            sudo apt-get install -y -qq ffmpeg megatools gpac
           pip install -q gdown
           mkdir -p downloads ready
 
