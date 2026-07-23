@@ -161,11 +161,8 @@ jobs:
 
                       if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
                       downloaded_files.append(file_name)
-                          else:
-                              print(f"⚠️ Format audio tidak didukung: {src}")
-                              if os.path.exists(src): os.remove(src)
-
-          if not downloaded_files:
+                      
+              if not downloaded_files:
               print("❌ Tidak ada file yang berhasil di-download.")
               sys.exit(1)
 
@@ -198,7 +195,7 @@ jobs:
               os.system(f'ffmpeg -y -i "video_gabungan.mp4" -i "{merged_audio}" '
               f'-c:v copy -c:a aac -b:a 192k '
               f'-map 0:v:0 -map 1:a:0 -shortest video_mentah.mp4'
-             ')
+             )
           else:
               os.rename("video_gabungan.mp4", "video_mentah.mp4")
 
