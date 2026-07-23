@@ -100,6 +100,8 @@ jobs:
           audio_timestamps_raw = os.environ.get("AUDIO_TIMESTAMPS", "").strip()
 
           downloaded_files = []
+          video_files = []
+          audio_files = []
           AUDIO_EXTS = {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'}
 
           # 1. LOOP DOWNLOAD VIDEO
@@ -149,20 +151,25 @@ jobs:
                               dst = f"audio_{idx}{ext}"
                               shutil.move(src, dst)
                               downloaded_files.append(dst)
-                  else:
-                      before = set(glob.glob("*"))
-                      os.system(f'gdown --fuzzy "{url}"')
-                      after = set(glob.glob("*"))
-                      new_files = list(set(after) - set(before))
-                      if new_files:
-                          src = new_files[0]
-                          ext = os.path.splitext(src)[1].lower()
+              else:
+                before = set(glob.glob("downloads/*"))
+
+                os.system(f'gdown --fuzzy "{url}" -O "downloads/audio_{idx}"')
+
+                after = set(glob.glob("downloads/*"))
+                new_files = list(after - before)
+
+               if new_files:
+                        src = new_files[0]
+                        ext = os.path.splitext(src)[1].lower()
+
                           if ext in AUDIO_EXTS:
-                              dst = f"audio_{idx}{ext}"
-                              shutil.move(src, dst)
-                              downloaded_files.append(dst)
-                          else:
-                              os.remove(src)
+                          dst = f"audio_{idx}{ext}"
+                          shutil.move(src, dst)
+                          downloaded_files.append(dst)
+                 else:
+                      if os.path.exists(src):
+                       os.remove(src)
 
           if not downloaded_files:
               print("❌ Tidak ada file yang berhasil di-download.")
