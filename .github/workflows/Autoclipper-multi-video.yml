@@ -129,38 +129,45 @@ jobs:
                           if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
                               downloaded_files.append(file_name)
 
-          # 2. LOOP DOWNLOAD AUDIO
-          if audio_url:
-              audio_urls = re.split(r'[\n,]+', audio_url)
-              for idx, url in enumerate(audio_urls):
-                  url = url.strip()
-                  if not url: continue
-                  print(f"Memproses Audio ke-{idx+1}: {url}")
+           # 2. LOOP DOWNLOAD AUDIO
+           if audio_url:
+           audio_urls = re.split(r'[\n,]+', audio_url)
 
-                  if "mega.nz" in url:
-                      before = set(glob.glob("downloads/*"))
-                      os.system(f'megadl "{url}" --path downloads')
-                      after = set(glob.glob("downloads/*"))
-                      new_files = list(after - before)
-                      if new_files:
-                          src = new_files[0]
-                          ext = os.path.splitext(src)[1].lower()
-                          if ext in AUDIO_EXTS:
-                              dst = f"audio_{idx}{ext}"
-                              shutil.move(src, dst)
-                              downloaded_files.append(dst)
+           for idx, url in enumerate(audio_urls):
+               url = url.strip()
+               if not url:
+                   continue
+
+          print(f"Memproses Audio ke-{idx+1}: {url}")
+
+          if "mega.nz" in url:
+              before = set(glob.glob("downloads/*"))
+              os.system(f'megadl "{url}" --path downloads')
+              after = set(glob.glob("downloads/*"))
+
+              new_files = list(after - before)
+
+              if new_files:
+                src = new_files[0]
+                ext = os.path.splitext(src)[1].lower()
+
+                if ext in AUDIO_EXTS:
+                    dst = f"audio_{idx}{ext}"
+                    shutil.move(src, dst)
+                    downloaded_files.append(dst)
+
           else:
-                   if m:
-                      drive_id = m.group(1)
+             m = re.search(r'/d/([a-zA-Z0-9_-]+)', url) or re.search(r'id=([a-zA-Z0-9_-]+)', url)
 
-                      file_name = f"audio_{idx}.mp3"
+            if m:
+                file_name = f"audio_{idx}.mp3"
 
-                      os.system(f'gdown "https://drive.google.com/uc?id={drive_id}" -O "{file_name}"')
+                os.system(
+                    f'gdown "https://drive.google.com/uc?id={m.group(1)}" -O "{file_name}"'
+                )
 
-                      if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
-                          downloaded_files.append(file_name)
-                      
-              
+                if os.path.exists(file_name) and os.path.getsize(file_name) > 0:
+                    downloaded_files.append(file_name)
 
           # 3. PENGELOMPOKAN
           video_files = [f for f in downloaded_files if os.path.splitext(f)[1].lower() not in AUDIO_EXTS]
