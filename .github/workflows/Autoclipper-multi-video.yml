@@ -17,6 +17,10 @@ on:
         required: false
         type: textarea
         default: ''
+      audio_timestamps:
+        description: "Timestamp Audio (Format: 00:00-00:05)"
+        required: false
+        default: ''
       videoTitle:
         description: "Judul Video (Wajib)"
         required: true
@@ -80,7 +84,7 @@ jobs:
 
       - name: Download & Normalize
         run: |
-          # Fungsi untuk download dan konversi ke standar (mp4, 30fps) agar mudah digabung nanti
+          # Fungsi untuk download dan konversi ke standar (mp4) agar mudah digabung
           proc_file() {
             local url=$1; local type=$2; local idx=$3
             local temp="downloads/${type}_${idx}.tmp"
@@ -94,7 +98,7 @@ jobs:
               gdown "$url" -O "$temp" --quiet
             fi
             
-            # Normalisasi instan ke format yang sama agar proses Merge nanti tanpa encode
+            # Normalisasi instan ke format mp4/aac
             ffmpeg -y -i "$temp" -c:v libx264 -preset ultrafast -crf 26 -pix_fmt yuv420p -c:a aac -ar 44100 "$out" -loglevel error
             rm "$temp"
           }
